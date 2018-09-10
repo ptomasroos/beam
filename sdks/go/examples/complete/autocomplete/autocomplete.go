@@ -27,14 +27,21 @@ import (
 	"github.com/apache/beam/sdks/go/pkg/beam/transforms/top"
 	"github.com/apache/beam/sdks/go/pkg/beam/x/beamx"
 	"github.com/apache/beam/sdks/go/pkg/beam/x/debug"
+
+	_ "github.com/apache/beam/sdks/go/pkg/beam/io/filesystem/gcs"
+	_ "github.com/apache/beam/sdks/go/pkg/beam/io/filesystem/local"
 )
 
 // TODO(herohde) 5/30/2017: fully implement https://github.com/apache/beam/blob/master/examples/java/src/main/java/org/apache/beam/examples/complete/AutoComplete.java
 
 var (
-	input = flag.String("input", os.ExpandEnv("$GOPATH/src/github.com/apache/beam/sdks/go/data/haiku/old_pond.txt"), "Files to read.")
-	n     = flag.Int("top", 3, "Number of completions")
+	input = flag.String("input", os.ExpandEnv("gs://apache-beam-samples/shakespeare/*"), "Files to read.")
+	n     = flag.Int("top", 5, "Number of completions")
 )
+
+func init() {
+	beam.RegisterFunction(extractFn)
+}
 
 var wordRE = regexp.MustCompile(`[a-zA-Z]+('[a-z])?`)
 
@@ -42,6 +49,10 @@ func extractFn(line string, emit func(string)) {
 	for _, word := range wordRE.FindAllString(line, -1) {
 		emit(word)
 	}
+}
+
+func lessFn(a string, b string) bool {
+	return len(a) < len(b)
 }
 
 func main() {
@@ -54,15 +65,11 @@ func main() {
 
 	p := beam.NewPipeline()
 	s := p.Root()
-	lines, err := textio.Immediate(s, *input)
-	if err != nil {
-		log.Exitf(ctx, "Failed to read %v: %v", *input, err)
-	}
-	words := beam.ParDo(s, extractFn, lines)
 
-	hits := top.Largest(s, words, *n, func(a, b string) bool {
-		return len(a) < len(b)
-	})
+	lines := textio.Read(s, *input)
+	words := beam.ParDo(s, extractFn, lines)
+	hits := top.Largest(s, words, *n, lessFn)
+
 	debug.Print(s, hits)
 
 	if err := beamx.Run(ctx, p); err != nil {
