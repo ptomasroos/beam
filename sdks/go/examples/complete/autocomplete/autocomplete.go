@@ -41,6 +41,7 @@ var (
 
 func init() {
 	beam.RegisterFunction(extractFn)
+	beam.RegisterFunction(lessFn)
 }
 
 var wordRE = regexp.MustCompile(`[a-zA-Z]+('[a-z])?`)
